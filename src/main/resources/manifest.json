@@ -1,0 +1,22 @@
+{
+    "Group": "NemTudo",
+    "Name": "VoiceChat",
+    "Version": "0.0.2",
+    "Description": "Hytale plugin for VoiceChat",
+    "Authors": [
+        {
+            "Name": "ozb"
+        }
+    ],
+    "Website": "https://hytale.nemtudo.me/voicechat",
+    "ServerVersion": "*",
+    "Dependencies": {
+        
+    },
+    "OptionalDependencies": {
+        
+    },
+    "DisabledByDefault": false,
+    "Main": "me.nemtudo.voicechat.VoiceChat",
+    "IncludesAssetPack": true
+}
