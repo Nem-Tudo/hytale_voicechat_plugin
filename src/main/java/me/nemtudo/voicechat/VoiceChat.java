@@ -386,11 +386,11 @@ public class VoiceChat extends JavaPlugin {
     private static class PlayerState {
         public String uuid;
         public String name;
+        public Position position;
 
         // TODO Reserved for future voice settings (proximity, volume, etc)
         public Map<String, Object> settings = new HashMap<>();
 
-        public Position position;
 
         public PlayerState(String uuid, String name) {
             this.uuid = uuid;
