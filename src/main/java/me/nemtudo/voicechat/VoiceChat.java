@@ -202,7 +202,7 @@ public class VoiceChat extends JavaPlugin {
         if (config.get().getAnnounceVoiceChatOnJoin()) {
             HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
                 playerRef.sendMessage(
-                        Message.raw("This server uses VoiceChat! Use /voicechat to talk via voice.")
+                        Message.raw(config.get().getAnnounceVoiceChatOnJoinMessage())
                                 .bold(true)
                                 .color(Color.GREEN)
                 );

@@ -40,6 +40,12 @@ public class VoiceChatConfig {
                             (config, info) -> config.announceVoiceChatOnJoin)
                     .add()
 
+                    // message to players that join
+                    .append(new KeyedCodec<String>("AnnounceVoiceChatOnJoinMessage", Codec.STRING),
+                            (config, value, info) -> config.announceVoiceChatOnJoinMessage = value,
+                            (config, info) -> config.announceVoiceChatOnJoinMessage)
+                    .add()
+
                     // API Base URL - URL base da API
                     .append(new KeyedCodec<String>("ApiBaseUrl", Codec.STRING),
                             (config, value, info) -> config.apiBaseUrl = value,
@@ -57,7 +63,10 @@ public class VoiceChatConfig {
     private String serverId = "ABCDEF";
     private String serverSecretKey = "ABCDE";
     private String serverToken = "secret_server_token";
+
     private boolean announceVoiceChatOnJoin = true;
+    private String announceVoiceChatOnJoinMessage = "This server uses VoiceChat! Use /voicechat to talk via voice.";
+
     private String apiBaseUrl = "https://apihytale.nemtudo.me";
     private String baseUrl = "https://voice.nemtudo.me";
 
@@ -78,6 +87,10 @@ public class VoiceChatConfig {
 
     public boolean getAnnounceVoiceChatOnJoin() {
         return announceVoiceChatOnJoin;
+    }
+
+    public String getAnnounceVoiceChatOnJoinMessage() {
+        return announceVoiceChatOnJoinMessage;
     }
 
     public String getApiBaseUrl() {
