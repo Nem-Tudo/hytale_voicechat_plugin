@@ -58,7 +58,7 @@ public class VoiceChat extends JavaPlugin {
     // Último snapshot enviado
     private final Map<String, PlayerState> previousStates = new HashMap<>();
 
-    private long lastPlayerUpdateTime = 0;
+    //private long lastPlayerUpdateTime = 0;
 
     private ScheduledFuture<?> trackingTask;
     private ScheduledFuture<?> forceUpdateTask;
@@ -318,7 +318,7 @@ public class VoiceChat extends JavaPlugin {
         sendPlayerUpdate(snapshot, snapshot.size());
         previousStates.clear();
         previousStates.putAll(snapshot);
-        lastPlayerUpdateTime = System.currentTimeMillis();
+        //lastPlayerUpdateTime = System.currentTimeMillis();
     }
 
     // ────────────────────────────────────────────────
@@ -328,10 +328,10 @@ public class VoiceChat extends JavaPlugin {
     private void startForcePlayerUpdateTimer() {
         forceUpdateTask = HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(
                 () -> {
-                    long delta = System.currentTimeMillis() - lastPlayerUpdateTime;
-                    if (delta >= TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES)) {
-                        consolidateAndSendIfNeeded(true);
-                    }
+                    //long delta = System.currentTimeMillis() - lastPlayerUpdateTime;
+                    //if (delta >= TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES)) {
+                    consolidateAndSendIfNeeded(true);
+                    //}
                 },
                 FORCE_UPDATE_INTERVAL_MINUTES,
                 FORCE_UPDATE_INTERVAL_MINUTES,
