@@ -28,11 +28,13 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * VoiceChat Plugin - Sincroniza posições de jogadores com API externa
+ * VoiceChat Plugin
+ * Sincroniza jogadores (posição / mundo) com API externa
+ * Otimizado para múltiplos mundos e 500+ players
  */
 public class VoiceChat extends JavaPlugin {
 
@@ -40,39 +42,39 @@ public class VoiceChat extends JavaPlugin {
     private static final long FORCE_UPDATE_INTERVAL_MINUTES = 3;
 
     public final Config<VoiceChatConfig> config;
+
     private final Gson gson = new GsonBuilder().create();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    // Armazena o estado anterior dos jogadores
+    // Snapshot coletado no tick atual (thread-safe)
+    private final Map<String, PlayerState> collectedStates = new ConcurrentHashMap<>();
+
+    // Último snapshot enviado
     private final Map<String, PlayerState> previousStates = new HashMap<>();
 
-    // Armazena os códigos de convite dos jogadores (UUID -> Código)
-    private final Map<String, String> playerInviteCodes = new HashMap<>();
-
-    // Última vez que enviamos atualização de jogadores
     private long lastPlayerUpdateTime = 0;
-    private ScheduledFuture<Void> trackingTask;
+
+    private ScheduledFuture<?> trackingTask;
     private ScheduledFuture<?> forceUpdateTask;
 
     public VoiceChat(@Nonnull JavaPluginInit init) {
         super(init);
-
         this.config = this.withConfig("VoiceChat", VoiceChatConfig.CODEC);
-
-        LOGGER.atInfo().log("VoiceChat has been loaded! By ozb (@nemtudo)");
+        LOGGER.atInfo().log("VoiceChat loaded! By ozb (@nemtudo)");
     }
+
+    // ────────────────────────────────────────────────
+    // Plugin lifecycle
+    // ────────────────────────────────────────────────
 
     @Override
     protected void setup() {
-        LOGGER.atInfo().log("Loaded " + this.getName());
-
         config.save();
 
         LOGGER.atInfo().log("Server ID: " + config.get().getServerId());
         LOGGER.atInfo().log("API Base URL: " + config.get().getApiBaseUrl());
-        LOGGER.atInfo().log("Base URL: " + config.get().getBaseUrl());
 
         getCommandRegistry().registerCommand(new VoiceChatCommand(this));
 
@@ -84,224 +86,174 @@ public class VoiceChat extends JavaPlugin {
 
     @Override
     protected void shutdown() {
-        if (trackingTask != null && !trackingTask.isDone()) {
-            trackingTask.cancel(false);
-        }
-        if (forceUpdateTask != null && !forceUpdateTask.isDone()) {
-            forceUpdateTask.cancel(false);
-        }
-        LOGGER.atInfo().log("VoiceChat disabled!");
+        if (trackingTask != null) trackingTask.cancel(false);
+        if (forceUpdateTask != null) forceUpdateTask.cancel(false);
+        LOGGER.atInfo().log("VoiceChat disabled");
     }
 
+    // ────────────────────────────────────────────────
+    // Player join message
+    // ────────────────────────────────────────────────
 
     private void onPlayerJoin(PlayerConnectEvent event) {
-        if (this.config.get().getAnnounceVoiceChatOnJoin()) {
-            HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
-                event.getPlayerRef().sendMessage(
-                        Message.raw("This server uses VoiceChat! Use the \"/voicechat\" command to talk to other players via voice!")
-                                .bold(true)
-                                .color(Color.green)
-                );
-            }, 7, TimeUnit.SECONDS);
-        }
+        if (!config.get().getAnnounceVoiceChatOnJoin()) return;
+
+        HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
+            event.getPlayerRef().sendMessage(
+                    Message.raw("This server uses VoiceChat! Use /voicechat to talk via voice.")
+                            .bold(true)
+                            .color(Color.GREEN)
+            );
+        }, 7, TimeUnit.SECONDS);
     }
 
-    public String getOrCreateInviteCode(String playerUuid) {
-        return playerInviteCodes.computeIfAbsent(playerUuid, uuid -> generateInviteCode());
-    }
-
-    private String generateInviteCode() {
-        Random random = new Random();
-        String code;
-        do {
-            code = String.format("%05d", random.nextInt(100000));
-        } while (playerInviteCodes.containsValue(code));
-        return code;
-    }
+    // ────────────────────────────────────────────────
+    // Tracking logic (FASE 1)
+    // ────────────────────────────────────────────────
 
     private void startPlayerTracking() {
-        trackingTask = (ScheduledFuture<Void>) HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(
-                () -> {
-                    try {
-                        Universe universe = Universe.get();
-                        Map<String, World> worlds = universe.getWorlds();
-                        if (!worlds.isEmpty()) {
-                            World world = worlds.values().iterator().next();
-                            world.execute(this::checkAndSendPlayerUpdates);
-                        }
-                    } catch (Exception e) {
-                        LOGGER.atSevere().log("Erro ao executar checkAndSendPlayerUpdates", e);
-                    }
-                },
+        trackingTask = HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(
+                this::collectFromAllWorlds,
                 5, 1, TimeUnit.SECONDS
         );
-
-        getTaskRegistry().registerTask(trackingTask);
-        LOGGER.atInfo().log("Player tracking started");
     }
 
-    private void startForcePlayerUpdateTimer() {
-        forceUpdateTask = HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(
-                this::forcePlayerUpdateIfNeeded,
-                FORCE_UPDATE_INTERVAL_MINUTES,
-                FORCE_UPDATE_INTERVAL_MINUTES,
-                TimeUnit.MINUTES
-        );
-
-        LOGGER.atInfo().log("Force player update timer started (every " + FORCE_UPDATE_INTERVAL_MINUTES + " minutes if no recent update)");
-    }
-
-    private void checkAndSendPlayerUpdates() {
+    private void collectFromAllWorlds() {
         Universe universe = Universe.get();
-        List<PlayerRef> players = universe.getPlayers();
+        Collection<World> worlds = universe.getWorlds().values();
+        if (worlds.isEmpty()) return;
 
-        Set<String> currentPlayerUuids = new HashSet<>();
-        Map<String, PlayerState> currentStates = new HashMap<>();
-        boolean hasChanges = false;
+        collectedStates.clear();
 
-        for (PlayerRef player : players) {
-            String uuid = player.getUuid().toString();
-            currentPlayerUuids.add(uuid);
+        AtomicInteger remaining = new AtomicInteger(worlds.size());
 
-            String username = player.getUsername();
-            String inviteCode = getOrCreateInviteCode(uuid);
-            PlayerState currentState = new PlayerState(uuid, username, inviteCode);
+        for (World world : worlds) {
+            world.execute(() -> {
+                collectFromWorld(world);
 
-            Ref<EntityStore> entityRef = player.getReference();
-            if (entityRef != null && entityRef.isValid()) {
-                Store<EntityStore> store = entityRef.getStore();
-                TransformComponent transform = store.getComponent(
-                        entityRef,
-                        TransformComponent.getComponentType()
-                );
-
-                if (transform != null) {
-                    Vector3d position = transform.getPosition();
-                    String worldName = player.getWorldUuid() != null ?
-                            player.getWorldUuid().toString() : "No World";
-
-                    currentState.position = new Position(position.x, position.y, position.z, worldName);
+                if (remaining.decrementAndGet() == 0) {
+                    HytaleServer.SCHEDULED_EXECUTOR.execute(this::consolidateAndSendIfNeeded);
                 }
-            }
-
-            currentStates.put(uuid, currentState);
-
-            PlayerState previousState = previousStates.get(uuid);
-            if (previousState == null || !previousState.equals(currentState)) {
-                hasChanges = true;
-            }
-        }
-
-        Set<String> playersLeft = new HashSet<>(previousStates.keySet());
-        playersLeft.removeAll(currentPlayerUuids);
-
-        if (!playersLeft.isEmpty()) {
-            hasChanges = true;
-            for (String uuid : playersLeft) {
-                playerInviteCodes.remove(uuid);
-            }
-        }
-
-        if (hasChanges) {
-            sendPlayerUpdate(currentStates, players.size());
-            previousStates.clear();
-            previousStates.putAll(currentStates);
-            lastPlayerUpdateTime = System.currentTimeMillis();
-            // LOGGER.atInfo().log("Player states updated and sent to API");
+            });
         }
     }
 
-    /**
-     * Verifica se já passou o tempo sem envio → força envio completo dos players
-     */
-    private void forcePlayerUpdateIfNeeded() {
-        long timeSinceLast = System.currentTimeMillis() - lastPlayerUpdateTime;
-        long threshold = TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES);
-
-        if (timeSinceLast >= threshold || lastPlayerUpdateTime == 0) {
-            //LOGGER.atInfo().log("Forçando envio completo de players (timeout de " + FORCE_UPDATE_INTERVAL_MINUTES + " min sem atualização)");
-            forceSendAllPlayers();
-        }
-    }
-
-    /**
-     * Força o envio da lista completa de jogadores atuais
-     */
-    private void forceSendAllPlayers() {
+    private void collectFromWorld(World world) {
+        UUID worldUuid = world.getWorldConfig().getUuid();
         Universe universe = Universe.get();
-        List<PlayerRef> players = universe.getPlayers();
 
-        Map<String, PlayerState> currentStates = new HashMap<>();
+        for (PlayerRef player : universe.getPlayers()) {
 
-        for (PlayerRef player : players) {
-            String uuid = player.getUuid().toString();
-            String username = player.getUsername();
-            String inviteCode = getOrCreateInviteCode(uuid);
-            PlayerState state = new PlayerState(uuid, username, inviteCode);
+            if (player.getWorldUuid() == null ||
+                    !player.getWorldUuid().equals(worldUuid)) {
+                continue;
+            }
 
-            Ref<EntityStore> entityRef = player.getReference();
-            if (entityRef != null && entityRef.isValid()) {
-                Store<EntityStore> store = entityRef.getStore();
+            PlayerState state = new PlayerState(
+                    player.getUuid().toString(),
+                    player.getUsername()
+            );
+
+            Ref<EntityStore> ref = player.getReference();
+            if (ref != null && ref.isValid()) {
+                Store<EntityStore> store = ref.getStore();
                 TransformComponent transform = store.getComponent(
-                        entityRef,
+                        ref,
                         TransformComponent.getComponentType()
                 );
 
                 if (transform != null) {
                     Vector3d pos = transform.getPosition();
-                    String worldName = player.getWorldUuid() != null ?
-                            player.getWorldUuid().toString() : "No World";
-                    state.position = new Position(pos.x, pos.y, pos.z, worldName);
+                    state.position = new Position(
+                            pos.x, pos.y, pos.z,
+                            worldUuid.toString()
+                    );
                 }
             }
 
-            currentStates.put(uuid, state);
+            collectedStates.put(state.uuid, state);
+        }
+    }
+
+    // ────────────────────────────────────────────────
+    // Diff + envio (FASE 2)
+    // ────────────────────────────────────────────────
+
+    private void consolidateAndSendIfNeeded() {
+        Map<String, PlayerState> snapshot = new HashMap<>(collectedStates);
+
+        boolean hasChanges = snapshot.size() != previousStates.size();
+
+        if (!hasChanges) {
+            for (Map.Entry<String, PlayerState> entry : snapshot.entrySet()) {
+                PlayerState prev = previousStates.get(entry.getKey());
+                if (prev == null || !prev.equals(entry.getValue())) {
+                    hasChanges = true;
+                    break;
+                }
+            }
         }
 
-        sendPlayerUpdate(currentStates, players.size());
+        if (!hasChanges) return;
 
-        // Atualiza o estado anterior para evitar envio duplicado logo em seguida
+        sendPlayerUpdate(snapshot, snapshot.size());
+
         previousStates.clear();
-        previousStates.putAll(currentStates);
+        previousStates.putAll(snapshot);
         lastPlayerUpdateTime = System.currentTimeMillis();
     }
 
-    private void sendPlayerUpdate(Map<String, PlayerState> playerStates, int playerCount) {
+    // ────────────────────────────────────────────────
+    // Force update timer
+    // ────────────────────────────────────────────────
+
+    private void startForcePlayerUpdateTimer() {
+        forceUpdateTask = HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(
+                () -> {
+                    long delta = System.currentTimeMillis() - lastPlayerUpdateTime;
+                    if (delta >= TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES)) {
+                        consolidateAndSendIfNeeded();
+                    }
+                },
+                FORCE_UPDATE_INTERVAL_MINUTES,
+                FORCE_UPDATE_INTERVAL_MINUTES,
+                TimeUnit.MINUTES
+        );
+    }
+
+    // ────────────────────────────────────────────────
+    // HTTP
+    // ────────────────────────────────────────────────
+
+    private void sendPlayerUpdate(Map<String, PlayerState> states, int count) {
         HytaleServer.SCHEDULED_EXECUTOR.execute(() -> {
             try {
-                String url = config.get().getApiBaseUrl() + "/servers/" + config.get().getServerId() + "/players";
-
-                ApiRequest apiRequest = new ApiRequest();
-                apiRequest.playerCount = playerCount;
-                apiRequest.players = new ArrayList<>(playerStates.values());
-
-                String jsonBody = gson.toJson(apiRequest);
+                ApiRequest payload = new ApiRequest();
+                payload.playerCount = count;
+                payload.players = new ArrayList<>(states.values());
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
+                        .uri(URI.create(
+                                config.get().getApiBaseUrl()
+                                        + "/servers/"
+                                        + config.get().getServerId()
+                                        + "/players"
+                        ))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + config.get().getServerToken())
                         .timeout(Duration.ofSeconds(5))
-                        .PUT(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .PUT(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
                         .build();
 
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = httpClient.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
 
-                int status = response.statusCode();
-                if (status >= 200 && status < 300) {
-                    // LOGGER.atInfo().log("Successfully sent player data (forced or changed)");
-                } else {
-                    LOGGER.atSevere().log("API error " + status + " - " + response.body());
-                    if (status == 401) {
-                        LOGGER.atSevere().log("You need to setup a valid ServerToken in config file");
-
-                        if (trackingTask != null && !trackingTask.isDone()) {
-                            trackingTask.cancel(false);
-                        }
-                        if (forceUpdateTask != null && !forceUpdateTask.isDone()) {
-                            forceUpdateTask.cancel(false);
-                        }
-                    }
+                if (response.statusCode() >= 400) {
+                    LOGGER.atSevere().log(
+                            "API error " + response.statusCode() + ": " + response.body()
+                    );
                 }
 
             } catch (Exception e) {
@@ -311,7 +263,7 @@ public class VoiceChat extends JavaPlugin {
     }
 
     // ────────────────────────────────────────────────
-    //  Classes internas mantidas iguais
+    // DTOs
     // ────────────────────────────────────────────────
 
     private static class ApiRequest {
@@ -322,30 +274,26 @@ public class VoiceChat extends JavaPlugin {
     private static class PlayerState {
         public String uuid;
         public String name;
-        public String inviteCode;
         public Map<String, Object> settings = new HashMap<>();
         public Position position;
 
-        public PlayerState(String uuid, String name, String inviteCode) {
+        public PlayerState(String uuid, String name) {
             this.uuid = uuid;
             this.name = name;
-            this.inviteCode = inviteCode;
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (!(obj instanceof PlayerState)) return false;
-            PlayerState other = (PlayerState) obj;
-            if (!this.name.equals(other.name)) return false;
-            if (!this.inviteCode.equals(other.inviteCode)) return false;
-            if (this.position == null && other.position == null) return true;
-            if (this.position == null || other.position == null) return false;
-            return this.position.equals(other.position);
+        public boolean equals(Object o) {
+            if (!(o instanceof PlayerState other)) return false;
+            if (!name.equals(other.name)) return false;
+            if (position == null && other.position == null) return true;
+            if (position == null || other.position == null) return false;
+            return position.equals(other.position);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(uuid, name, inviteCode, position);
+            return Objects.hash(uuid, name, position);
         }
     }
 
@@ -361,13 +309,12 @@ public class VoiceChat extends JavaPlugin {
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (!(obj instanceof Position)) return false;
-            Position other = (Position) obj;
-            return Math.abs(this.x - other.x) < 0.01 &&
-                    Math.abs(this.y - other.y) < 0.01 &&
-                    Math.abs(this.z - other.z) < 0.01 &&
-                    this.world.equals(other.world);
+        public boolean equals(Object o) {
+            if (!(o instanceof Position p)) return false;
+            return Math.abs(x - p.x) < 0.01 &&
+                    Math.abs(y - p.y) < 0.01 &&
+                    Math.abs(z - p.z) < 0.01 &&
+                    world.equals(p.world);
         }
 
         @Override
