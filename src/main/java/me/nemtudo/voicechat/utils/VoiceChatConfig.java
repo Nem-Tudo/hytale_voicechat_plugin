@@ -11,6 +11,11 @@ public class VoiceChatConfig {
 
     public static final BuilderCodec<VoiceChatConfig> CODEC =
             BuilderCodec.builder(VoiceChatConfig.class, VoiceChatConfig::new)
+                    // Comment
+                    .append(new KeyedCodec<String>("_Comment", Codec.STRING),
+                            (config, value, info) -> config._comment = value,
+                            (config, info) -> config._comment)
+                    .add()
                     // Server ID - Identificador único deste servidor
                     .append(new KeyedCodec<String>("ServerId", Codec.STRING),
                             (config, value, info) -> config.serverId = value,
@@ -48,6 +53,7 @@ public class VoiceChatConfig {
                     .build();
 
     // Valores padrão
+    private String _comment = "Get your credentials here: https://hytaleweb.nemtudo.me/addserver";
     private String serverId = "ABCDEF";
     private String serverSecretKey = "ABCDE";
     private String serverToken = "secret_server_token";
