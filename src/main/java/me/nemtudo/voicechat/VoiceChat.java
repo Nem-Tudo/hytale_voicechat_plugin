@@ -90,6 +90,11 @@ public class VoiceChat extends JavaPlugin {
         checkPluginVersion();
         startPlayerTracking();
         startForcePlayerUpdateTimer();
+        HytaleServer.SCHEDULED_EXECUTOR.schedule(
+                () -> consolidateAndSendIfNeeded(true),
+                2,
+                TimeUnit.SECONDS
+        );
 
         getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerJoin);
     }
@@ -244,7 +249,7 @@ public class VoiceChat extends JavaPlugin {
                 collectFromWorld(world);
 
                 if (remaining.decrementAndGet() == 0) {
-                    HytaleServer.SCHEDULED_EXECUTOR.execute(this::consolidateAndSendIfNeeded);
+                    HytaleServer.SCHEDULED_EXECUTOR.execute(() -> consolidateAndSendIfNeeded(false));
                 }
             });
         }
@@ -291,25 +296,26 @@ public class VoiceChat extends JavaPlugin {
     // Diff + envio (FASE 2)
     // ────────────────────────────────────────────────
 
-    private void consolidateAndSendIfNeeded() {
+    private void consolidateAndSendIfNeeded(boolean force) {
         Map<String, PlayerState> snapshot = new HashMap<>(collectedStates);
 
-        boolean hasChanges = snapshot.size() != previousStates.size();
+        if (!force) {
+            boolean hasChanges = snapshot.size() != previousStates.size();
 
-        if (!hasChanges) {
-            for (Map.Entry<String, PlayerState> entry : snapshot.entrySet()) {
-                PlayerState prev = previousStates.get(entry.getKey());
-                if (prev == null || !prev.equals(entry.getValue())) {
-                    hasChanges = true;
-                    break;
+            if (!hasChanges) {
+                for (var entry : snapshot.entrySet()) {
+                    PlayerState prev = previousStates.get(entry.getKey());
+                    if (prev == null || !prev.equals(entry.getValue())) {
+                        hasChanges = true;
+                        break;
+                    }
                 }
             }
+
+            if (!hasChanges) return;
         }
 
-        if (!hasChanges) return;
-
         sendPlayerUpdate(snapshot, snapshot.size());
-
         previousStates.clear();
         previousStates.putAll(snapshot);
         lastPlayerUpdateTime = System.currentTimeMillis();
@@ -324,7 +330,7 @@ public class VoiceChat extends JavaPlugin {
                 () -> {
                     long delta = System.currentTimeMillis() - lastPlayerUpdateTime;
                     if (delta >= TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES)) {
-                        consolidateAndSendIfNeeded();
+                        consolidateAndSendIfNeeded(true);
                     }
                 },
                 FORCE_UPDATE_INTERVAL_MINUTES,
