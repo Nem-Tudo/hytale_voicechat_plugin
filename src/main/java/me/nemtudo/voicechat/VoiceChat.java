@@ -330,7 +330,7 @@ public class VoiceChat extends JavaPlugin {
                 () -> {
                     //long delta = System.currentTimeMillis() - lastPlayerUpdateTime;
                     //if (delta >= TimeUnit.MINUTES.toMillis(FORCE_UPDATE_INTERVAL_MINUTES)) {
-                    consolidateAndSendIfNeeded(true);
+                    consolidateAndSendIfNeeded(true); //really force EVERY INTERVAL_MINUTES
                     //}
                 },
                 FORCE_UPDATE_INTERVAL_MINUTES,
