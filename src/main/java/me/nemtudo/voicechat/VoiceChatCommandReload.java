@@ -5,10 +5,10 @@ import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.CommandManager;
 import com.hypixel.hytale.server.core.console.ConsoleSender;
-import me.nemtudo.voicechat.utils.GenerateCode;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.awt.*;
 import java.util.concurrent.CompletableFuture;
 
 public class VoiceChatCommandReload extends AbstractCommand {
@@ -23,13 +23,13 @@ public class VoiceChatCommandReload extends AbstractCommand {
     @Override
     @Nullable
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-        context.sender().sendMessage(Message.raw("Reloading VoiceChat..."));
+        context.sender().sendMessage(Message.raw("Reloading VoiceChat...").color(Color.orange).italic(true));
 
         String reloadCommand = "plugins reload " + plugin.getName();
 
         CommandManager.get().handleCommand(ConsoleSender.INSTANCE, reloadCommand);
 
-        context.sender().sendMessage(Message.raw("Reloaded!"));
+        context.sender().sendMessage(Message.raw("Reloaded!").color(Color.green).bold(true));
 
         return CompletableFuture.completedFuture(null);
     }

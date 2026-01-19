@@ -2,12 +2,14 @@ package me.nemtudo.voicechat;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -17,6 +19,8 @@ import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
+import me.nemtudo.voicechat.utils.VersionComparator;
+import me.nemtudo.voicechat.utils.VersionStatus;
 import me.nemtudo.voicechat.utils.VoiceChatConfig;
 
 import javax.annotation.Nonnull;
@@ -59,6 +63,11 @@ public class VoiceChat extends JavaPlugin {
     private ScheduledFuture<?> trackingTask;
     private ScheduledFuture<?> forceUpdateTask;
 
+    // Version check
+    private volatile String latestStableVersion = null;
+    public volatile String downloadPluginURL = null;
+    private volatile boolean versionMismatch = false;
+
     public VoiceChat(@Nonnull JavaPluginInit init) {
         super(init);
         this.config = this.withConfig("VoiceChat", VoiceChatConfig.CODEC);
@@ -78,6 +87,7 @@ public class VoiceChat extends JavaPlugin {
 
         getCommandRegistry().registerCommand(new VoiceChatCommand(this));
 
+        checkPluginVersion();
         startPlayerTracking();
         startForcePlayerUpdateTimer();
 
@@ -91,20 +101,122 @@ public class VoiceChat extends JavaPlugin {
         LOGGER.atInfo().log("VoiceChat disabled");
     }
 
+    private void checkPluginVersion() {
+        HytaleServer.SCHEDULED_EXECUTOR.execute(() -> {
+            try {
+                String pluginName = getName();
+                String currentVersion = getManifest().getVersion().toString();
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(
+                                config.get().getApiBaseUrl()
+                                        + "/plugins/"
+                                        + pluginName
+                                        + "/versions"
+                        ))
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
+
+                if (response.statusCode() != 200) {
+                    LOGGER.atWarning().log(
+                            "Failed to check plugin version (HTTP " + response.statusCode() + ")"
+                    );
+                    return;
+                }
+
+                JsonObject json = gson.fromJson(response.body(), JsonObject.class);
+                latestStableVersion = json.get("latestStableVersion").getAsString();
+                downloadPluginURL = json.get("downloadPluginURL").getAsString();
+
+                VersionStatus status = VersionComparator.compare(currentVersion, latestStableVersion);
+
+                switch (status) {
+
+                    case SAME_VERSION -> {
+                        LOGGER.atInfo().log("VoiceChat is on the most up-to-date version possible :)");
+                        LOGGER.atInfo().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                    }
+
+                    case BEHIND_LAST_PATCH -> {
+                        LOGGER.atWarning().log("VoiceChat is slightly outdated (patch version behind).");
+                        LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                        LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
+                    }
+
+                    case BEHIND_MAJOR -> {
+                        versionMismatch = true;
+
+                        LOGGER.atSevere().log("==================================================");
+                        LOGGER.atSevere().log(" VoiceChat version MAJOR mismatch detected!");
+                        LOGGER.atSevere().log(" Current version               : " + currentVersion);
+                        LOGGER.atSevere().log(" Latest stable                 : " + latestStableVersion);
+                        LOGGER.atSevere().log(" Lasted stable Download Link   : " + downloadPluginURL);
+                        LOGGER.atSevere().log(" Please update the plugin as soon as possible.");
+                        LOGGER.atSevere().log("==================================================");
+                    }
+
+                    case AHEAD_LAST_PATCH -> {
+                        LOGGER.atWarning().log("VoiceChat is running a newer PATCH version than the latest stable.");
+                        LOGGER.atWarning().log("This is usually safe, but unexpected issues may occur.");
+                        LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                        LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
+                    }
+
+                    case AHEAD_MAJOR -> {
+                        LOGGER.atWarning().log("==================================================");
+                        LOGGER.atWarning().log(" VoiceChat is running a NEWER MAJOR version!");
+                        LOGGER.atWarning().log(" This build may be unstable or incompatible.");
+                        LOGGER.atWarning().log(" Current version : " + currentVersion);
+                        LOGGER.atWarning().log(" Latest stable   : " + latestStableVersion);
+                        LOGGER.atWarning().log(" Lasted stable Download Link: " + downloadPluginURL);
+                        LOGGER.atWarning().log("==================================================");
+                    }
+                }
+
+
+            } catch (Exception e) {
+                LOGGER.atSevere().log(
+                        "Failed to check VoiceChat plugin version: " + e.getMessage()
+                );
+            }
+        });
+    }
+
+
     // ────────────────────────────────────────────────
-    // Player join message
+    // Player join messages
     // ────────────────────────────────────────────────
 
     private void onPlayerJoin(PlayerConnectEvent event) {
-        if (!config.get().getAnnounceVoiceChatOnJoin()) return;
+        PlayerRef playerRef = event.getPlayerRef();
+        Player player = event.getPlayer();
 
-        HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
-            event.getPlayerRef().sendMessage(
-                    Message.raw("This server uses VoiceChat! Use /voicechat to talk via voice.")
-                            .bold(true)
-                            .color(Color.GREEN)
-            );
-        }, 7, TimeUnit.SECONDS);
+        if (player == null) return;
+
+        if (config.get().getAnnounceVoiceChatOnJoin()) {
+            HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
+                playerRef.sendMessage(
+                        Message.raw("This server uses VoiceChat! Use /voicechat to talk via voice.")
+                                .bold(true)
+                                .color(Color.GREEN)
+                );
+            }, 7, TimeUnit.SECONDS);
+        }
+
+        if (versionMismatch && player.hasPermission("nemtudo.voicechat.warns.differentVersion")) {
+
+            HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
+                playerRef.sendMessage(Message.raw("Hey admin! VoiceChat is outdated on this server!").color(Color.ORANGE).bold(true));
+                playerRef.sendMessage(Message.raw("Current version: " + getManifest().getVersion().toString() + " | Latest stable: " + latestStableVersion).color(Color.YELLOW));
+                playerRef.sendMessage(Message.raw("Download here: " + downloadPluginURL).color(Color.YELLOW).link(downloadPluginURL));
+            }, 8, TimeUnit.SECONDS);
+        }
     }
 
     // ────────────────────────────────────────────────
@@ -274,7 +386,10 @@ public class VoiceChat extends JavaPlugin {
     private static class PlayerState {
         public String uuid;
         public String name;
+
+        // TODO Reserved for future voice settings (proximity, volume, etc)
         public Map<String, Object> settings = new HashMap<>();
+
         public Position position;
 
         public PlayerState(String uuid, String name) {

@@ -1,6 +1,5 @@
 package me.nemtudo.voicechat;
 
-import com.hypixel.hytale.protocol.GameMode;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.Message;
@@ -20,6 +19,7 @@ public class VoiceChatCommand extends AbstractCommand {
         super("voicechat", "Get the voice chat link", false);
         this.plugin = plugin;
         this.addSubCommand(new VoiceChatCommandReload(this.plugin));
+        this.addSubCommand(new VoiceChatCommandDownload(this.plugin));
     }
 
     @Override
