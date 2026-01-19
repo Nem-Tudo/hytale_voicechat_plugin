@@ -52,6 +52,8 @@ public class VoiceChat extends JavaPlugin {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
+    public final String apiQuerySuffix = "?pluginVersion=" + getManifest().getVersion().toString() + "&pluginName=" + getName();
+
     // Snapshot coletado no tick atual (thread-safe)
     private final Map<String, PlayerState> collectedStates = new ConcurrentHashMap<>();
 
@@ -113,12 +115,7 @@ public class VoiceChat extends JavaPlugin {
                 String currentVersion = getManifest().getVersion().toString();
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(
-                                config.get().getApiBaseUrl()
-                                        + "/plugins/"
-                                        + pluginName
-                                        + "/versions"
-                        ))
+                        .uri(URI.create(config.get().getApiBaseUrl() + "/plugins/" + pluginName + "/versions" + apiQuerySuffix))
                         .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build();
@@ -351,12 +348,7 @@ public class VoiceChat extends JavaPlugin {
                 payload.players = new ArrayList<>(states.values());
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(
-                                config.get().getApiBaseUrl()
-                                        + "/servers/"
-                                        + config.get().getServerId()
-                                        + "/players"
-                        ))
+                        .uri(URI.create(config.get().getApiBaseUrl() + "/servers/" + config.get().getServerId() + "/players" + apiQuerySuffix))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + config.get().getServerToken())
                         .timeout(Duration.ofSeconds(5))
