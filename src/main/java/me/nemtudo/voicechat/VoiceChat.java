@@ -19,6 +19,7 @@ import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
+import me.nemtudo.voicechat.utils.ApiRequestHelper;
 import me.nemtudo.voicechat.utils.VersionComparator;
 import me.nemtudo.voicechat.utils.VersionStatus;
 import me.nemtudo.voicechat.utils.VoiceChatConfig;
@@ -47,12 +48,14 @@ public class VoiceChat extends JavaPlugin {
 
     public final Config<VoiceChatConfig> config;
 
-    private final Gson gson = new GsonBuilder().create();
-    private final HttpClient httpClient = HttpClient.newBuilder()
+    public final Gson gson = new GsonBuilder().create();
+    public final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    public final String apiQuerySuffix = "?pluginVersion=" + getManifest().getVersion().toString() + "&pluginName=" + getName();
+    public final String apiQuerySuffix = "pluginVersion=" + getManifest().getVersion().toString() + "&pluginName=" + getName();
+    // Adiciona o helper
+    private ApiRequestHelper apiRequest;
 
     // Snapshot coletado no tick atual (thread-safe)
     private final Map<String, PlayerState> collectedStates = new ConcurrentHashMap<>();
@@ -84,6 +87,8 @@ public class VoiceChat extends JavaPlugin {
     protected void setup() {
         config.save();
 
+        this.apiRequest = new ApiRequestHelper(this);
+
         LOGGER.atInfo().log("Server ID: " + config.get().getServerId());
         LOGGER.atInfo().log("API Base URL: " + config.get().getApiBaseUrl());
 
@@ -114,73 +119,73 @@ public class VoiceChat extends JavaPlugin {
                 String pluginName = getName();
                 String currentVersion = getManifest().getVersion().toString();
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(config.get().getApiBaseUrl() + "/plugins/" + pluginName + "/versions" + apiQuerySuffix))
-                        .timeout(Duration.ofSeconds(5))
-                        .GET()
-                        .build();
+                apiRequest.request(
+                        "GET",
+                        "/plugins/" + pluginName + "/versions",
+                        null
+                ).thenAccept(response -> {
+                    if (response.statusCode() != 200) {
+                        LOGGER.atWarning().log(
+                                "Failed to check plugin version (HTTP " + response.statusCode() + ")"
+                        );
+                        return;
+                    }
 
-                HttpResponse<String> response = httpClient.send(
-                        request,
-                        HttpResponse.BodyHandlers.ofString()
-                );
+                    JsonObject json = gson.fromJson(response.body(), JsonObject.class);
+                    latestStableVersion = json.get("latestStableVersion").getAsString();
+                    downloadPluginURL = json.get("downloadPluginURL").getAsString();
 
-                if (response.statusCode() != 200) {
-                    LOGGER.atWarning().log(
-                            "Failed to check plugin version (HTTP " + response.statusCode() + ")"
+                    VersionStatus status = VersionComparator.compare(currentVersion, latestStableVersion);
+
+                    switch (status) {
+
+                        case SAME_VERSION -> {
+                            LOGGER.atInfo().log("VoiceChat is on the most up-to-date version possible :)");
+                            LOGGER.atInfo().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                        }
+
+                        case BEHIND_LAST_PATCH -> {
+                            LOGGER.atWarning().log("VoiceChat is slightly outdated (patch version behind).");
+                            LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                            LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
+                        }
+
+                        case BEHIND_MAJOR -> {
+                            versionMismatch = true;
+
+                            LOGGER.atSevere().log("==================================================");
+                            LOGGER.atSevere().log(" VoiceChat version MAJOR mismatch detected!");
+                            LOGGER.atSevere().log(" Current version               : " + currentVersion);
+                            LOGGER.atSevere().log(" Latest stable                 : " + latestStableVersion);
+                            LOGGER.atSevere().log(" Lasted stable Download Link   : " + downloadPluginURL);
+                            LOGGER.atSevere().log(" Please update the plugin as soon as possible.");
+                            LOGGER.atSevere().log("==================================================");
+                        }
+
+                        case AHEAD_LAST_PATCH -> {
+                            LOGGER.atWarning().log("VoiceChat is running a newer PATCH version than the latest stable.");
+                            LOGGER.atWarning().log("This is usually safe, but unexpected issues may occur.");
+                            LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
+                            LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
+                        }
+
+                        case AHEAD_MAJOR -> {
+                            LOGGER.atWarning().log("==================================================");
+                            LOGGER.atWarning().log(" VoiceChat is running a NEWER MAJOR version!");
+                            LOGGER.atWarning().log(" This build may be unstable or incompatible.");
+                            LOGGER.atWarning().log(" Current version : " + currentVersion);
+                            LOGGER.atWarning().log(" Latest stable   : " + latestStableVersion);
+                            LOGGER.atWarning().log(" Lasted stable Download Link: " + downloadPluginURL);
+                            LOGGER.atWarning().log("==================================================");
+                        }
+                    }
+
+                }).exceptionally(e -> {
+                    LOGGER.atSevere().log(
+                            "Failed to check VoiceChat plugin version: " + e.getMessage()
                     );
-                    return;
-                }
-
-                JsonObject json = gson.fromJson(response.body(), JsonObject.class);
-                latestStableVersion = json.get("latestStableVersion").getAsString();
-                downloadPluginURL = json.get("downloadPluginURL").getAsString();
-
-                VersionStatus status = VersionComparator.compare(currentVersion, latestStableVersion);
-
-                switch (status) {
-
-                    case SAME_VERSION -> {
-                        LOGGER.atInfo().log("VoiceChat is on the most up-to-date version possible :)");
-                        LOGGER.atInfo().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
-                    }
-
-                    case BEHIND_LAST_PATCH -> {
-                        LOGGER.atWarning().log("VoiceChat is slightly outdated (patch version behind).");
-                        LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
-                        LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
-                    }
-
-                    case BEHIND_MAJOR -> {
-                        versionMismatch = true;
-
-                        LOGGER.atSevere().log("==================================================");
-                        LOGGER.atSevere().log(" VoiceChat version MAJOR mismatch detected!");
-                        LOGGER.atSevere().log(" Current version               : " + currentVersion);
-                        LOGGER.atSevere().log(" Latest stable                 : " + latestStableVersion);
-                        LOGGER.atSevere().log(" Lasted stable Download Link   : " + downloadPluginURL);
-                        LOGGER.atSevere().log(" Please update the plugin as soon as possible.");
-                        LOGGER.atSevere().log("==================================================");
-                    }
-
-                    case AHEAD_LAST_PATCH -> {
-                        LOGGER.atWarning().log("VoiceChat is running a newer PATCH version than the latest stable.");
-                        LOGGER.atWarning().log("This is usually safe, but unexpected issues may occur.");
-                        LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
-                        LOGGER.atWarning().log("Lasted stable Download Link: " + downloadPluginURL);
-                    }
-
-                    case AHEAD_MAJOR -> {
-                        LOGGER.atWarning().log("==================================================");
-                        LOGGER.atWarning().log(" VoiceChat is running a NEWER MAJOR version!");
-                        LOGGER.atWarning().log(" This build may be unstable or incompatible.");
-                        LOGGER.atWarning().log(" Current version : " + currentVersion);
-                        LOGGER.atWarning().log(" Latest stable   : " + latestStableVersion);
-                        LOGGER.atWarning().log(" Lasted stable Download Link: " + downloadPluginURL);
-                        LOGGER.atWarning().log("==================================================");
-                    }
-                }
-
+                    return null;
+                });
 
             } catch (Exception e) {
                 LOGGER.atSevere().log(
@@ -341,34 +346,23 @@ public class VoiceChat extends JavaPlugin {
     // ────────────────────────────────────────────────
 
     private void sendPlayerUpdate(Map<String, PlayerState> states, int count) {
-        HytaleServer.SCHEDULED_EXECUTOR.execute(() -> {
-            try {
-                ApiRequest payload = new ApiRequest();
-                payload.playerCount = count;
-                payload.players = new ArrayList<>(states.values());
+        ApiRequestPayload payload = new ApiRequestPayload();
+        payload.playerCount = count;
+        payload.players = new ArrayList<>(states.values());
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(config.get().getApiBaseUrl() + "/servers/" + config.get().getServerId() + "/players" + apiQuerySuffix))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + config.get().getServerToken())
-                        .timeout(Duration.ofSeconds(5))
-                        .PUT(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
-                        .build();
+        System.out.println("11requesttt" + payload);
 
-                HttpResponse<String> response = httpClient.send(
-                        request,
-                        HttpResponse.BodyHandlers.ofString()
-                );
-
-                if (response.statusCode() >= 400) {
-                    LOGGER.atSevere().log(
-                            "API error " + response.statusCode() + ": " + response.body()
-                    );
-                }
-
-            } catch (Exception e) {
-                LOGGER.atSevere().log("Failed to send player update", e);
+        apiRequest.request(
+                "PUT",
+                "/servers/" + config.get().getServerId() + "/players",
+                payload
+        ).thenAccept(response -> {
+            if (response.statusCode() >= 400) {
+                LOGGER.atSevere().log("API error " + response.statusCode() + ": " + response.body());
             }
+        }).exceptionally(e -> {
+            LOGGER.atSevere().log("Failed to send player update", e);
+            return null;
         });
     }
 
@@ -376,7 +370,7 @@ public class VoiceChat extends JavaPlugin {
     // DTOs
     // ────────────────────────────────────────────────
 
-    private static class ApiRequest {
+    private static class ApiRequestPayload {
         public int playerCount;
         public List<PlayerState> players;
     }
