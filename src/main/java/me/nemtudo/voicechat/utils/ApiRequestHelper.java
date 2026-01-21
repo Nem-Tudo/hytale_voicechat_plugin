@@ -44,8 +44,6 @@ public class ApiRequestHelper {
                         ? HttpRequest.BodyPublishers.ofString(plugin.gson.toJson(body))
                         : HttpRequest.BodyPublishers.noBody();
 
-                System.out.println("request 2222 " + body, bodyPublisher);
-
                 switch (method.toUpperCase()) {
                     case "GET" -> requestBuilder.GET();
                     case "POST" -> requestBuilder.POST(bodyPublisher);
