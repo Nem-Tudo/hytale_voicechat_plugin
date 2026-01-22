@@ -5,8 +5,9 @@ import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.CommandSender;
 import me.nemtudo.voicechat.VoiceChat;
-import me.nemtudo.voicechat.commands.VoiceChat.Connect.DevCommand;
+import me.nemtudo.voicechat.commands.VoiceChat.Connect.DevConnectCommand;
 import me.nemtudo.voicechat.network.PlayerTokenRequestPayload;
 import me.nemtudo.voicechat.utils.ApiRequestHelper;
 
@@ -27,7 +28,7 @@ public class ConnectCommand extends AbstractCommand {
         this.plugin = plugin;
         this.LOGGER = plugin.getLogger();
         this.apiRequestHelper = plugin.getApiRequestHelper();
-        this.addSubCommand(new DevCommand(this.plugin));
+        this.addSubCommand(new DevConnectCommand(this.plugin));
     }
 
     @Override
@@ -37,13 +38,18 @@ public class ConnectCommand extends AbstractCommand {
             context.sendMessage(Message.raw("[Voice Chat] Only players can execute this command"));
             return CompletableFuture.completedFuture(null);
         }
+        generateAndSendConnectLinkToPlayer(context.sender());
 
-        UUID playerUUID = context.sender().getUuid();
-        String playerName = context.sender().getDisplayName();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public void generateAndSendConnectLinkToPlayer(CommandSender sender) {
+        UUID playerUUID = sender.getUuid();
+        String playerName = sender.getDisplayName();
 
         PlayerTokenRequestPayload requestPayload = new PlayerTokenRequestPayload(playerUUID, playerName, false);
 
-        context.sender().sendMessage(Message.raw("[Voice Chat] Generating your link... Wait").color(Color.CYAN));
+        sender.sendMessage(Message.raw("[Voice Chat] Generating your link... Wait").color(Color.CYAN));
 
         apiRequestHelper.request(
                 "POST",
@@ -53,13 +59,13 @@ public class ConnectCommand extends AbstractCommand {
 
             if (response.statusCode() == 401) {
                 LOGGER.atSevere().log("API error 401 (Unauthorized): Invalid server token. ServerToken in /mods/NemTudo_VoiceChat/VoiceChat.json is invalid. Response: " + response.body());
-                context.sender().sendMessage(Message.raw("[Voice Chat] Authentication error with the API. Please contact an administrator. ServerToken in /mods/NemTudo_VoiceChat/VoiceChat.json is invalid").color(Color.RED));
+                sender.sendMessage(Message.raw("[Voice Chat] Authentication error with the API. Please contact an administrator. ServerToken in /mods/NemTudo_VoiceChat/VoiceChat.json is invalid").color(Color.RED));
                 return;
             }
 
-            if (response.statusCode() >= 400) {
+            if (response.statusCode() != 200) {
                 LOGGER.atSevere().log("API error " + response.statusCode() + ": " + response.body());
-                context.sender().sendMessage(Message.raw("[Voice Chat] An error occurred while generating your link: HTTP " + response.statusCode()).color(Color.RED).italic(true));
+                sender.sendMessage(Message.raw("[Voice Chat] An error occurred while generating your link: HTTP " + response.statusCode()).color(Color.RED).italic(true));
                 return;
             }
 
@@ -70,15 +76,13 @@ public class ConnectCommand extends AbstractCommand {
 
             String finalURL = plugin.config.get().getBaseUrl() + "/connect?code=" + playerToken;
 
-            context.sender().sendMessage(Message.raw("[Voice Chat] Click here to connect to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
-            context.sender().sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
+            sender.sendMessage(Message.raw("[Voice Chat] Click here to connect to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
+            sender.sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
 
         }).exceptionally(e -> {
             LOGGER.atSevere().log("Failed to generate player token " + e);
             return null;
         });
-
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override

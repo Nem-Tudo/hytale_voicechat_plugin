@@ -4,6 +4,7 @@ import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.CommandSender;
 import me.nemtudo.voicechat.VoiceChat;
 import me.nemtudo.voicechat.commands.VoiceChat.*;
 import me.nemtudo.voicechat.utils.ApiRequestHelper;
@@ -17,10 +18,15 @@ public class VoiceChatCommand extends AbstractCommand {
 
     private final VoiceChat plugin;
 
+    ConnectCommand connectCommand;
+
     public VoiceChatCommand(VoiceChat plugin) {
         super("voicechat", "Get the voice chat link", false);
         this.plugin = plugin;
-        this.addSubCommand(new ConnectCommand(this.plugin));
+
+        this.connectCommand = new ConnectCommand(this.plugin);
+        this.addSubCommand(connectCommand);
+
         this.addSubCommand(new ReloadCommand(this.plugin));
         this.addSubCommand(new DownloadCommand(this.plugin));
         this.addSubCommand(new DevCommand(this.plugin));
@@ -34,17 +40,39 @@ public class VoiceChatCommand extends AbstractCommand {
             return CompletableFuture.completedFuture(null);
         }
 
-        String finalURL = plugin.config.get().getBaseUrl();
+        plugin.getApiRequestHelper().request("GET", "/players/exists/" + context.sender().getUuid().toString(), null)
+                .whenComplete((response, error) -> {
+                    if (error != null) {
+                        sendDefaultVoiceLink(context.sender());
+                        return;
+                    }
 
-        context.sender().sendMessage(Message.raw("[Voice Chat] Click here to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
-        context.sender().sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
+                    if (response.statusCode() != 200) {
+                        sendDefaultVoiceLink(context.sender());
+                        return;
+                    }
+
+                    Boolean playerExists = plugin.gson.fromJson(response.body(), Boolean.class);
+                    if (playerExists) {
+                        sendDefaultVoiceLink(context.sender());
+                        return;
+                    }
+
+                    connectCommand.generateAndSendConnectLinkToPlayer(context.sender());
+                });
 
         return CompletableFuture.completedFuture(null);
+    }
+
+    private void sendDefaultVoiceLink(CommandSender sender) {
+        String finalURL = plugin.config.get().getBaseUrl();
+
+        sender.sendMessage(Message.raw("[Voice Chat] Click here to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
+        sender.sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
     }
 
     @Override
     protected boolean canGeneratePermission() {
         return false;
     }
-
 }
