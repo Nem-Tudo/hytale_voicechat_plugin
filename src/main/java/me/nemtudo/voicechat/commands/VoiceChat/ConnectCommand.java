@@ -68,7 +68,7 @@ public class ConnectCommand extends AbstractCommand {
 
             String playerToken = bodyJson.get("token").getAsString();
 
-            String finalURL = plugin.config.get().getBaseUrl() + "/connect?token=" + playerToken;
+            String finalURL = plugin.config.get().getBaseUrl() + "/connect?code=" + playerToken;
 
             context.sender().sendMessage(Message.raw("[Voice Chat] Click here to connect to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
             context.sender().sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
