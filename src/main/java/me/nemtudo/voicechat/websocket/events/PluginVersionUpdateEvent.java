@@ -17,8 +17,14 @@ public class PluginVersionUpdateEvent extends BaseWebSocketEvent<PluginVersionUp
     protected void onEvent(PluginVersionUpdateData data) {
         plugin.getVersionCheckService().checkPluginVersion();
         plugin.getLogger().atInfo().log(ConsoleColors.success("[Voice Chat] An update has just been released!"));
+        if (!data.message().isEmpty()) {
+            plugin.getLogger().atInfo().log(ConsoleColors.success("[Voice Chat] " + data.message()));
+        }
         if (data.needBroadcast()) {
             plugin.broadcast(Message.raw("[Voice Chat] An update has just been released!").color(Color.GREEN));
+            if (!data.message().isEmpty()) {
+                plugin.broadcast(Message.raw("[Voice Chat] " + data.message()).color(Color.GREEN));
+            }
         }
     }
 

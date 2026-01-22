@@ -1,6 +1,7 @@
 package me.nemtudo.voicechat.websocket.events;
 
 public record PluginVersionUpdateData(
-        boolean needBroadcast
+        boolean needBroadcast,
+        String message
 ) {
 }
