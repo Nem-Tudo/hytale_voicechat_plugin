@@ -4,7 +4,6 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import me.nemtudo.voicechat.VoiceChat;
-import me.nemtudo.voicechat.utils.GenerateCode;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -15,36 +14,24 @@ public class DevCommand extends AbstractCommand {
 
     private final VoiceChat plugin;
 
-    // Opção 1: Recebe o plugin no construtor (RECOMENDADO)
     public DevCommand(VoiceChat plugin) {
-        super("dev", "Get the DEV voice chat link", false);
+        super("dev", "Get the voice chat link for a development version. Expect bugs!", false);
         this.plugin = plugin;
-        this.addSubCommand(new ReloadCommand(this.plugin));
-        this.addSubCommand(new DownloadCommand(this.plugin));
     }
 
     @Override
     @Nullable
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
+        if (!context.isPlayer()) {
+            context.sendMessage(Message.raw("[Voice Chat] Only players can execute this command"));
+            return CompletableFuture.completedFuture(null);
+        }
 
-        // Obtém o token do servidor através do config
-        String serverSecretKey = plugin.config.get().getServerSecretKey();
-        String serverId = plugin.config.get().getServerId();
+        String finalURL = plugin.config.get().getBaseUrl() + "/dev";
 
-        // Gera o código usando UUID do jogador + token do servidor
-        String playerCode = GenerateCode.createCode(
-                context.sender().getUuid().toString(),
-                serverSecretKey
-        );
-
-        // Envia a mensagem com o link
-
-        String finalLink = plugin.config.get().getBaseUrl() + "/dev/" + serverId + "/" + playerCode;
-
-        context.sender().sendMessage(Message.raw("Link (click): " + finalLink).link(finalLink).color(Color.green));
-        context.sender().sendMessage(Message.raw("SERVER ID: " + serverId));
-        context.sender().sendMessage(Message.raw("YOUR CODE: " + playerCode));
-        context.sender().sendMessage(Message.raw("DEV VERSION! EXPECT BUGS").color(Color.orange));
+        context.sender().sendMessage(Message.raw("[Voice Chat] Click here to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
+        context.sender().sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
+        context.sender().sendMessage(Message.raw("[Voice Chat] This is a DEV version!!! Expect bugs!!! Use \"/voicechat\" for the stable version.").color(Color.ORANGE).bold(true));
 
         return CompletableFuture.completedFuture(null);
     }
@@ -53,5 +40,4 @@ public class DevCommand extends AbstractCommand {
     protected boolean canGeneratePermission() {
         return false;
     }
-
 }

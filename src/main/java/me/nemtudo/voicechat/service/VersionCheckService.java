@@ -3,10 +3,14 @@ package me.nemtudo.voicechat.service;
 import com.google.gson.JsonObject;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.HytaleServer;
+import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
 import me.nemtudo.voicechat.VoiceChat;
 import me.nemtudo.voicechat.utils.ApiRequestHelper;
 import me.nemtudo.voicechat.utils.VersionComparator;
 import me.nemtudo.voicechat.utils.VersionStatus;
+
+import java.awt.*;
 
 /**
  * Service responsible for checking plugin version against API
@@ -23,12 +27,13 @@ public class VersionCheckService {
     private volatile String latestStableVersion;
     private volatile String latestAcceptableVersion;
     private volatile String downloadPluginURL;
+    private volatile String updateMessage;
     private volatile boolean versionMismatch = false;
 
-    public VersionCheckService(VoiceChat plugin, ApiRequestHelper apiRequestHelper) {
+    public VersionCheckService(VoiceChat plugin) {
         this.plugin = plugin;
         this.LOGGER = plugin.getLogger();
-        this.apiRequestHelper = apiRequestHelper;
+        this.apiRequestHelper = plugin.getApiRequestHelper();
     }
 
     public void checkPluginVersion() {
@@ -69,6 +74,7 @@ public class VersionCheckService {
         JsonObject json = plugin.gson.fromJson(responseBody, JsonObject.class);
         latestStableVersion = json.get("latestStableVersion").getAsString();
         downloadPluginURL = json.get("downloadPluginURL").getAsString();
+        updateMessage = json.get("updateMessage").getAsString();
         latestAcceptableVersion = json.get("latestAcceptableVersion").getAsString();
 
         VersionStatus status = VersionComparator.compare(currentVersion, latestStableVersion);
@@ -94,6 +100,7 @@ public class VersionCheckService {
         LOGGER.atWarning().log("VoiceChat is slightly outdated (patch version behind).");
         LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
         LOGGER.atWarning().log("Latest stable Download Link: " + downloadPluginURL);
+        LOGGER.atWarning().log("Update message: " + updateMessage);
     }
 
     private void logBehindMajor(String currentVersion) {
@@ -104,6 +111,7 @@ public class VersionCheckService {
         LOGGER.atSevere().log(" Current version               : " + currentVersion);
         LOGGER.atSevere().log(" Latest stable                 : " + latestStableVersion);
         LOGGER.atSevere().log(" Latest stable Download Link   : " + downloadPluginURL);
+        LOGGER.atSevere().log(" Update message                : " + updateMessage);
         LOGGER.atSevere().log(" Please update the plugin as soon as possible.");
         LOGGER.atSevere().log("==================================================");
     }
@@ -113,16 +121,28 @@ public class VersionCheckService {
         LOGGER.atWarning().log("This is usually safe, but unexpected issues may occur.");
         LOGGER.atWarning().log("Current version : " + currentVersion + " | Latest stable : " + latestStableVersion);
         LOGGER.atWarning().log("Latest stable Download Link: " + downloadPluginURL);
+        LOGGER.atWarning().log("Update message: " + updateMessage);
+
     }
 
     private void logAheadMajor(String currentVersion) {
         LOGGER.atWarning().log("==================================================");
         LOGGER.atWarning().log(" VoiceChat is running a NEWER MAJOR version!");
         LOGGER.atWarning().log(" This build may be unstable or incompatible.");
-        LOGGER.atWarning().log(" Current version : " + currentVersion);
-        LOGGER.atWarning().log(" Latest stable   : " + latestStableVersion);
-        LOGGER.atWarning().log(" Latest stable Download Link: " + downloadPluginURL);
+        LOGGER.atWarning().log(" Current version               : " + currentVersion);
+        LOGGER.atWarning().log(" Latest stable                 : " + latestStableVersion);
+        LOGGER.atWarning().log(" Latest stable Download Link   : " + downloadPluginURL);
+        LOGGER.atWarning().log(" Update message                : " + updateMessage);
         LOGGER.atWarning().log("==================================================");
+    }
+
+    public void sendVersionWarningMessagesToPlayer(PlayerRef playerRef) {
+        String currentVersion = plugin.getManifest().getVersion().toString();
+
+        playerRef.sendMessage(Message.raw("Hey admin! Voice chat is outdated on this server and will stop working soon.").color(Color.RED).bold(true));
+        playerRef.sendMessage(Message.raw("Current version: " + currentVersion + " | Latest stable: " + latestStableVersion).color(Color.YELLOW));
+        playerRef.sendMessage(Message.raw("Download here: " + downloadPluginURL).color(Color.YELLOW).link(downloadPluginURL));
+        playerRef.sendMessage(Message.raw("Update message: " + updateMessage).color(Color.yellow));
     }
 
     public boolean hasVersionMismatch() {
@@ -133,11 +153,15 @@ public class VersionCheckService {
         return latestStableVersion;
     }
 
-    public String getLatestAcceptableVersion(){
+    public String getLatestAcceptableVersion() {
         return latestAcceptableVersion;
     }
 
     public String getDownloadPluginURL() {
         return downloadPluginURL;
+    }
+
+    public String getUpdateMessage() {
+        return updateMessage;
     }
 }

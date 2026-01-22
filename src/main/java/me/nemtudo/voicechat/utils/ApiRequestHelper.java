@@ -11,12 +11,13 @@ import java.util.concurrent.CompletableFuture;
 
 public class ApiRequestHelper {
 
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private final HytaleLogger LOGGER;
 
     private final VoiceChat plugin;
 
     public ApiRequestHelper(VoiceChat plugin) {
         this.plugin = plugin;
+        this.LOGGER = plugin.getLogger();
     }
 
     /**
@@ -58,7 +59,8 @@ public class ApiRequestHelper {
                 return plugin.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             } catch (Exception e) {
-                LOGGER.atSevere().log("API request failed [" + method + " " + url + "]", e);
+                LOGGER.atSevere().log("API request failed [" + method + " " + url + "]");
+                LOGGER.atSevere().log(e.getMessage());
                 throw new RuntimeException("API request failed", e);
             }
         });

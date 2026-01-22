@@ -22,12 +22,6 @@ public class VoiceChatConfig {
                             (config, info) -> config.serverId)
                     .add()
 
-                    // Server Secret Key - For code generations
-                    .append(new KeyedCodec<String>("ServerSecretKey", Codec.STRING),
-                            (config, value, info) -> config.serverSecretKey = value,
-                            (config, info) -> config.serverSecretKey)
-                    .add()
-
                     // Server Token - Token de autenticação
                     .append(new KeyedCodec<String>("ServerToken", Codec.STRING),
                             (config, value, info) -> config.serverToken = value,
@@ -46,39 +40,80 @@ public class VoiceChatConfig {
                             (config, info) -> config.announceVoiceChatOnJoinMessage)
                     .add()
 
-                    // API Base URL - URL base da API
-                    .append(new KeyedCodec<String>("ApiBaseUrl", Codec.STRING),
-                            (config, value, info) -> config.apiBaseUrl = value,
-                            (config, info) -> config.apiBaseUrl)
+                    // If plugin will broadcast when a player enters voice chat
+                    .append(new KeyedCodec<Boolean>("BroadcastPlayerEnterVoiceChatEnabled", Codec.BOOLEAN),
+                            (config, value, info) -> config.broadcastPlayerEnterVoiceChatEnabled = value,
+                            (config, info) -> config.broadcastPlayerEnterVoiceChatEnabled)
                     .add()
+
+                    // Message broadcasted when a player enters voice chat
+                    .append(new KeyedCodec<String>("BroadcastPlayerEnterVoiceChatMessage", Codec.STRING),
+                            (config, value, info) -> config.broadcastPlayerEnterVoiceChatMessage = value,
+                            (config, info) -> config.broadcastPlayerEnterVoiceChatMessage)
+                    .add()
+
+                    // If plugin will broadcast when a player leaves voice chat
+                    .append(new KeyedCodec<Boolean>("BroadcastPlayerLeaveVoiceChatEnabled", Codec.BOOLEAN),
+                            (config, value, info) -> config.broadcastPlayerLeaveVoiceChatEnabled = value,
+                            (config, info) -> config.broadcastPlayerLeaveVoiceChatEnabled)
+                    .add()
+
+                    // Message broadcasted when a player leaves voice chat
+                    .append(new KeyedCodec<String>("BroadcastPlayerLeaveVoiceChatMessage", Codec.STRING),
+                            (config, value, info) -> config.broadcastPlayerLeaveVoiceChatMessage = value,
+                            (config, info) -> config.broadcastPlayerLeaveVoiceChatMessage)
+                    .add()
+
+                    // If plugin will log websocket information to console
+                    .append(new KeyedCodec<Boolean>("LogWebsocketInfoInConsole", Codec.BOOLEAN),
+                            (config, value, info) -> config.logWebsocketInfoInConsole = value,
+                            (config, info) -> config.logWebsocketInfoInConsole)
+                    .add()
+
                     // Base URL - URL base da voicechat
                     .append(new KeyedCodec<String>("BaseUrl", Codec.STRING),
                             (config, value, info) -> config.baseUrl = value,
                             (config, info) -> config.baseUrl)
                     .add()
+
+                    // API Base URL - URL base da API
+                    .append(new KeyedCodec<String>("ApiBaseUrl", Codec.STRING),
+                            (config, value, info) -> config.apiBaseUrl = value,
+                            (config, info) -> config.apiBaseUrl)
+                    .add()
+
+                    // Websocket Base URL - URL base do Websocket
+                    .append(new KeyedCodec<String>("WebsocketBaseUrl", Codec.STRING),
+                            (config, value, info) -> config.websocketBaseUrl = value,
+                            (config, info) -> config.websocketBaseUrl)
+                    .add()
                     .build();
 
     // Valores padrão
-    private String _comment = "Get your credentials here: https://hytaleweb.nemtudo.me/addserver";
+    private String _comment = "Get ServerId and ServerToken here: https://hytaleweb.nemtudo.me/addserver";
     private String serverId = "ABCDEF";
-    private String serverSecretKey = "ABCDE";
     private String serverToken = "secret_server_token";
 
     private boolean announceVoiceChatOnJoin = true;
     private String announceVoiceChatOnJoinMessage = "This server uses VoiceChat! Use /voicechat to talk via voice.";
 
-    private String apiBaseUrl = "https://apihytale.nemtudo.me";
+    private boolean broadcastPlayerEnterVoiceChatEnabled = true;
+    private String broadcastPlayerEnterVoiceChatMessage = "[VoiceChat] {player.name} entered the voice chat.";
+
+    private boolean broadcastPlayerLeaveVoiceChatEnabled = false;
+    private String broadcastPlayerLeaveVoiceChatMessage = "[VoiceChat] {player.name} left the voice chat.";
+
+    private boolean logWebsocketInfoInConsole = false;
+
     private String baseUrl = "https://voice.nemtudo.me";
+    private String apiBaseUrl = "https://apihytale.nemtudo.me";
+    private String websocketBaseUrl = "wss://apihytale.nemtudo.me";
 
     public VoiceChatConfig() {
     }
 
     public String getServerId() {
         return serverId;
-    }
-
-    public String getServerSecretKey() {
-        return serverSecretKey;
     }
 
     public String getServerToken() {
@@ -93,11 +128,35 @@ public class VoiceChatConfig {
         return announceVoiceChatOnJoinMessage;
     }
 
-    public String getApiBaseUrl() {
-        return apiBaseUrl;
+    public boolean getBroadcastPlayerEnterVoiceChatEnabled() {
+        return broadcastPlayerEnterVoiceChatEnabled;
+    }
+
+    public String getBroadcastPlayerEnterVoiceChatMessage() {
+        return broadcastPlayerEnterVoiceChatMessage;
+    }
+
+    public boolean getBroadcastPlayerLeaveVoiceChatEnabled() {
+        return broadcastPlayerLeaveVoiceChatEnabled;
+    }
+
+    public String getBroadcastPlayerLeaveVoiceChatMessage() {
+        return broadcastPlayerLeaveVoiceChatMessage;
+    }
+
+    public boolean getLogWebsocketInfoInConsole() {
+        return logWebsocketInfoInConsole;
     }
 
     public String getBaseUrl() {
         return baseUrl;
+    }
+
+    public String getApiBaseUrl() {
+        return apiBaseUrl;
+    }
+
+    public String getWebsocketBaseUrl() {
+        return websocketBaseUrl;
     }
 }

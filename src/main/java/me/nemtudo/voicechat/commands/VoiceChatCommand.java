@@ -1,11 +1,12 @@
 package me.nemtudo.voicechat.commands;
 
+import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
-import com.hypixel.hytale.server.core.Message;
 import me.nemtudo.voicechat.VoiceChat;
 import me.nemtudo.voicechat.commands.VoiceChat.*;
-import me.nemtudo.voicechat.utils.GenerateCode;
+import me.nemtudo.voicechat.utils.ApiRequestHelper;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -16,10 +17,10 @@ public class VoiceChatCommand extends AbstractCommand {
 
     private final VoiceChat plugin;
 
-    // Opção 1: Recebe o plugin no construtor (RECOMENDADO)
     public VoiceChatCommand(VoiceChat plugin) {
         super("voicechat", "Get the voice chat link", false);
         this.plugin = plugin;
+        this.addSubCommand(new ConnectCommand(this.plugin));
         this.addSubCommand(new ReloadCommand(this.plugin));
         this.addSubCommand(new DownloadCommand(this.plugin));
         this.addSubCommand(new DevCommand(this.plugin));
@@ -28,24 +29,15 @@ public class VoiceChatCommand extends AbstractCommand {
     @Override
     @Nullable
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
+        if (!context.isPlayer()) {
+            context.sendMessage(Message.raw("[Voice Chat] Only players can execute this command"));
+            return CompletableFuture.completedFuture(null);
+        }
 
-        // Obtém o token do servidor através do config
-        String serverSecretKey = plugin.config.get().getServerSecretKey();
-        String serverId = plugin.config.get().getServerId();
+        String finalURL = plugin.config.get().getBaseUrl();
 
-        // Gera o código usando UUID do jogador + token do servidor
-        String playerCode = GenerateCode.createCode(
-                context.sender().getUuid().toString(),
-                serverSecretKey
-        );
-
-        // Envia a mensagem com o link
-
-        String finalLink = plugin.config.get().getBaseUrl() + "/" + serverId + "/" + playerCode;
-
-        context.sender().sendMessage(Message.raw("Link (click): " + finalLink).link(finalLink).color(Color.green));
-        context.sender().sendMessage(Message.raw("SERVER ID: " + serverId));
-        context.sender().sendMessage(Message.raw("YOUR CODE: " + playerCode));
+        context.sender().sendMessage(Message.raw("[Voice Chat] Click here to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
+        context.sender().sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
 
         return CompletableFuture.completedFuture(null);
     }

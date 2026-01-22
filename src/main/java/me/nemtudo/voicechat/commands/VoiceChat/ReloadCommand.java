@@ -28,10 +28,14 @@ public class ReloadCommand extends AbstractCommand {
 
         String reloadCommand = "plugins reload " + plugin.getName();
 
-        CommandManager.get().handleCommand(ConsoleSender.INSTANCE, reloadCommand);
-
-        context.sender().sendMessage(Message.raw("Reloaded!").color(Color.green).bold(true));
-
-        return CompletableFuture.completedFuture(null);
+        return CommandManager.get().handleCommand(ConsoleSender.INSTANCE, reloadCommand)
+                .thenRun(() -> {
+                    context.sender().sendMessage(Message.raw("Reloaded!").color(Color.green).bold(true));
+                })
+                .exceptionally(throwable -> {
+                    context.sender().sendMessage(Message.raw("Failed to reload: " + throwable.getMessage())
+                            .color(Color.red));
+                    return null;
+                });
     }
 }

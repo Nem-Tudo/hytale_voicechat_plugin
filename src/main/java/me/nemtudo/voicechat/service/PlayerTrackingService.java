@@ -14,7 +14,7 @@ import me.nemtudo.voicechat.VoiceChat;
 import me.nemtudo.voicechat.model.PlayerState;
 import me.nemtudo.voicechat.model.Position;
 import me.nemtudo.voicechat.network.PlayerUpdateRequestPayload;
-import me.nemtudo.voicechat.utils.ApiRequestHelper;
+import me.nemtudo.voicechat.websocket.WebSocketManager;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +33,7 @@ public class PlayerTrackingService {
     private static final long FORCE_UPDATE_INTERVAL_MINUTES = 3;
 
     private final VoiceChat plugin;
-    private final ApiRequestHelper apiRequestHelper;
+    private final WebSocketManager wsManager;
 
     // Thread-safe snapshot of current player states
     private final Map<String, PlayerState> currentStates = new ConcurrentHashMap<>();
@@ -44,9 +44,9 @@ public class PlayerTrackingService {
     private ScheduledFuture<?> trackingTask;
     private ScheduledFuture<?> forceUpdateTask;
 
-    public PlayerTrackingService(VoiceChat plugin, ApiRequestHelper apiRequestHelper) {
+    public PlayerTrackingService(VoiceChat plugin) {
         this.plugin = plugin;
-        this.apiRequestHelper = apiRequestHelper;
+        this.wsManager = plugin.getWebsocketManager();
         this.LOGGER = plugin.getLogger();
     }
 
@@ -201,17 +201,6 @@ public class PlayerTrackingService {
                 new ArrayList<>(states.values())
         );
 
-        apiRequestHelper.request(
-                "PUT",
-                "/servers/" + plugin.config.get().getServerId() + "/players",
-                requestPayload
-        ).thenAccept(response -> {
-            if (response.statusCode() >= 400) {
-                LOGGER.atSevere().log("API error " + response.statusCode() + ": " + response.body());
-            }
-        }).exceptionally(e -> {
-            LOGGER.atSevere().log("Failed to send player update", e);
-            return null;
-        });
+        wsManager.emit("server:players", plugin.gson.toJson(requestPayload));
     }
 }
