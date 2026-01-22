@@ -30,6 +30,7 @@ public class VoiceChatCommand extends AbstractCommand {
         this.addSubCommand(new ReloadCommand(this.plugin));
         this.addSubCommand(new DownloadCommand(this.plugin));
         this.addSubCommand(new DevCommand(this.plugin));
+        this.addSubCommand(new AuthorCommand(this.plugin));
     }
 
     @Override
