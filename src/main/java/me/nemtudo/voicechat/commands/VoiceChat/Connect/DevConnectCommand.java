@@ -75,9 +75,10 @@ public class DevConnectCommand extends AbstractCommand {
 
             String finalURL = plugin.config.get().getBaseUrl() + "/dev/connect?code=" + playerToken;
 
+            sender.sendMessage(Message.raw("[Voice Chat] Your code: " + playerToken).link(finalURL).color(Color.WHITE));
             sender.sendMessage(Message.raw("[Voice Chat] Click here to connect to Voice Chat:").link(finalURL).color(Color.GREEN).bold(true));
             sender.sendMessage(Message.raw(finalURL).link(finalURL).color(Color.GREEN));
-            sender.sendMessage(Message.raw("[Voice Chat] This is a DEV version!!! Expect bugs!!! Use \"/voicechat\" for the stable version.").color(Color.ORANGE).bold(true));
+            sender.sendMessage(Message.raw("[Voice Chat] This is a DEV version!!! Expect bugs!!!").color(Color.ORANGE).bold(true));
 
         }).exceptionally(e -> {
             LOGGER.atSevere().log("Failed to generate player token " + e);
